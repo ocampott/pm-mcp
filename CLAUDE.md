@@ -14,14 +14,14 @@ Cuando uses `get_trello_card` o `get_jira_issue`, **siempre** lanzá un agente O
 
 1. **Llamá al tool** para obtener los datos del issue/tarjeta (descripción, comentarios, subtasks, imágenes).
 
-2. **Buscá contexto del proyecto en Engram** con `mem_search` usando el nombre o path del proyecto actual. Buscá entradas con `topic_key` que empiece con `project-context/`.
-   - Si **encontrás contexto guardado**: tenés el resumen del proyecto listo para usar, no hace falta releer el código.
-   - Si **no encontrás nada**: Opus va a explorar el proyecto y vos vas a guardar los hallazgos en Engram después.
+2. **Intentá leer el archivo de contexto del proyecto**: `.claude/project-context.md` (relativo al directorio raíz del proyecto actual).
+   - Si **el archivo existe**: tenés el contexto listo, no hace falta explorar el código.
+   - Si **no existe**: Opus va a explorar el proyecto y vas a escribir el archivo después.
 
 3. **Lanzá un agente Opus** (`Agent` tool con `model: "opus"`) con el contenido del issue y según el caso:
 
-   - Si **tenés contexto en Engram**: incluilo en el prompt bajo el título "Contexto del proyecto (cacheado)". Indicale que no necesita explorar el código porque ya tenés esa información.
-   - Si **no tenés contexto**: pedile que primero explore el proyecto usando `Read`, `Bash` con `find`/`ls`, etc. Que entienda: estructura de carpetas, tecnologías, convenciones de nombres, patrones de código, manejo de estilos, organización de funciones. Que incluya al final de su respuesta una sección llamada `## Contexto del proyecto` con un resumen estructurado de lo que encontró.
+   - Si **tenés contexto cacheado**: incluilo en el prompt bajo el título "Contexto del proyecto (cacheado)". Indicale que no necesita explorar el código.
+   - Si **no tenés contexto**: pedile que explore el proyecto usando `Read`, `Bash` con `find`/`ls`, etc. Que entienda: estructura de carpetas, tecnologías, convenciones de nombres, patrones de código, organización de funciones. Que incluya al final de su respuesta una sección `## Contexto del proyecto` con un resumen **conciso de máximo 200 palabras**, en formato estructurado (tech stack, estructura de carpetas, convenciones clave, patrones importantes). Solo lo esencial para entender cómo está hecho el proyecto.
 
    En ambos casos, el análisis debe estar en español, con un tono **amigable y conversacional**, como si le explicara a un colega. Sin jerga técnica innecesaria. Con estas secciones:
 
@@ -47,11 +47,7 @@ Cuando uses `get_trello_card` o `get_jira_issue`, **siempre** lanzá un agente O
    - Tecnologías o patrones del proyecto que aplican bien a este caso
    - Qué evitar o qué podría salir mal, considerando el estado actual del código
 
-4. **Si Opus exploró el proyecto** (porque no había cache en Engram), guardá la sección `## Contexto del proyecto` de su respuesta en Engram con `mem_save`:
-   - `title`: `"Contexto del proyecto: [nombre del proyecto]"`
-   - `type`: `"discovery"`
-   - `topic_key`: `"project-context/[nombre-del-proyecto]"` (así se sobreescribe si ya existe)
-   - `content`: el resumen estructurado que devolvió Opus
+4. **Si Opus exploró el proyecto** (porque no había cache), escribí el archivo `.claude/project-context.md` con el contenido de la sección `## Contexto del proyecto` que devolvió. Este archivo está en `.gitignore` — es local de cada dev.
 
-5. **Presentá el análisis de Opus** al usuario (sin la sección de contexto del proyecto, que es interna).
+5. **Presentá el análisis de Opus** al usuario (sin la sección de contexto, que es interna).
 6. **Esperá confirmación** de que el análisis es correcto antes de proponer o escribir cualquier código.
