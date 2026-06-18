@@ -1,3 +1,5 @@
+import { HttpError, withRetry } from "./retry.js";
+
 export interface JiraImage {
   name: string;
   mimeType: string;
@@ -17,7 +19,6 @@ export interface JiraIssueResult {
   status: string;
   priority: string | null;
   assignee: string | null;
-  reporter: string | null;
   labels: string[];
   components: string[];
   description: string;
@@ -47,20 +48,22 @@ function getCredentials(): { host: string; authHeader: string } {
 }
 
 async function fetchJira<T>(url: string, authHeader: string): Promise<T> {
-  const response = await fetch(url, {
-    headers: {
-      Authorization: authHeader,
-      Accept: "application/json",
-    },
+  return withRetry(async () => {
+    const response = await fetch(url, {
+      headers: {
+        Authorization: authHeader,
+        Accept: "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      if (response.status === 404) throw new Error("issue no encontrado");
+      if (response.status === 401) throw new Error("revisar credenciales de Jira");
+      throw new HttpError(response.status, `Jira API error: HTTP ${response.status} ${response.statusText}`);
+    }
+
+    return response.json() as Promise<T>;
   });
-
-  if (!response.ok) {
-    if (response.status === 404) throw new Error("issue no encontrado");
-    if (response.status === 401) throw new Error("revisar credenciales de Jira");
-    throw new Error(`Jira API error: HTTP ${response.status} ${response.statusText}`);
-  }
-
-  return response.json() as Promise<T>;
 }
 
 // Converts Atlassian Document Format (ADF) JSON to plain text.
@@ -142,7 +145,6 @@ interface JiraIssueRaw {
     status?: { name: string };
     priority?: { name: string } | null;
     assignee?: { displayName: string } | null;
-    reporter?: { displayName: string } | null;
     labels?: string[];
     components?: { name: string }[];
     description?: unknown;
@@ -226,7 +228,7 @@ export async function getJiraIssue(issueKey: string, includeImages = true): Prom
   const baseUrl = `https://${host}`;
 
   const fields = [
-    "summary", "description", "status", "assignee", "reporter",
+    "summary", "description", "status", "assignee",
     "labels", "priority", "comment", "attachment", "issuetype", "components",
   ].join(",");
 
@@ -271,7 +273,6 @@ export async function getJiraIssue(issueKey: string, includeImages = true): Prom
     status: f.status?.name ?? "",
     priority: f.priority?.name ?? null,
     assignee: f.assignee?.displayName ?? null,
-    reporter: f.reporter?.displayName ?? null,
     labels: f.labels ?? [],
     components: (f.components ?? []).map((c) => c.name),
     description: f.description ? adfToText(f.description).trim() : "",
