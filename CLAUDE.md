@@ -68,6 +68,12 @@ Rules:
 
 Usá este contexto para encontrar eficientemente los archivos específicos del ticket sin explorar todo el codebase desde cero. Aun así, inspeccioná los archivos relevantes para el ticket antes de responder.
 
+[INCLUIR SI HAY patterns.md:]
+**Patrones conocidos del proyecto:**
+{contenido de .claude/patterns.md}
+
+Antes de explorar el codebase, cruzá estos patrones con el ticket. Si el ticket involucra una funcionalidad cuyo patrón ya está documentado, reutilizá la referencia directamente sin re-explorar esos archivos.
+
 [INCLUIR SI NO HAY CONTEXTO CACHEADO:]
 No hay contexto cacheado. Explorá el proyecto primero usando `find`, `ls`, `Read`.
 Entendé: estructura de carpetas, tech stack, convenciones de nombres, patrones de código, organización de funciones.
@@ -77,6 +83,7 @@ Al final de tu respuesta incluí una sección `## Contexto del proyecto`: resume
 {contenido del ticket}
 
 **Antes de responder:**
+0. Si hay patrones cacheados, cruzalos con el ticket antes de explorar el codebase. Reutilizá referencias documentadas directamente.
 1. Analizá el ticket.
 2. Inspeccioná el codebase (guiado por el contexto cacheado si existe).
 3. Encontrá archivos, servicios, APIs, modelos, componentes e implementaciones existentes relacionados.
@@ -99,6 +106,12 @@ Al final de tu respuesta incluí una sección `## Contexto del proyecto`: resume
 - Paso 1
 - Paso 2
 - Paso 3
+
+## Patrones encontrados
+*(omitir si no hay patrones reutilizables relevantes para el ticket)*
+**Referencia:** ruta/al/componente-o-módulo
+**Archivos:** archivo1.js, archivo2.js
+**Uso:** Para qué sirve este patrón en el contexto del ticket.
 
 ## Riesgos
 *(omitir si no hay riesgos reales)*
