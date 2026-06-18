@@ -10,24 +10,57 @@ En vez de copiar tickets manualmente, pegar contexto en el chat y hacer que Clau
 
 # ¿Qué hace?
 
-pm-mcp expone dos herramientas:
+pm-mcp expone seis herramientas:
 
-* `get_trello_card`
-* `get_jira_issue`
+**Lectura**
+* `get_trello_card` — lee una card de Trello por ID
+* `get_jira_issue` — lee un issue de Jira por clave
+
+**Búsqueda**
+* `list_trello_cards` — lista cards de un board o busca globalmente
+* `search_jira_issues` — busca issues con JQL
+
+**Escritura**
+* `add_trello_comment` — deja un comentario en una card
+* `add_jira_comment` — deja un comentario en un issue
 
 Claude puede leer directamente:
 
-* título
-* descripción
-* comentarios
-* checklists
-* labels
-* asignados
-* adjuntos
-* subtasks
-* imágenes (opcional)
+* título, descripción, comentarios
+* checklists (ítems pendientes y completados)
+* labels con colores (`red: Blocker`, `yellow: Importante`)
+* asignados, fechas de vencimiento
+* adjuntos e imágenes (opcional)
+* subtareas, issue padre, sprint y épica (Jira)
 
-Y usar esa información para analizar el trabajo antes de empezar a implementar.
+---
+
+# Comandos
+
+Una vez instalado, podés usar estos comandos directamente en Claude Code:
+
+## /pm-analize [id]
+
+Analiza un ticket por ID. Auto-detecta si es Jira o Trello:
+
+```text
+/pm-analize PROJ-123
+/pm-analize abc123xyz
+```
+
+Jira: cualquier clave con formato `PROJ-123` (letras-guión-número).
+Trello: cualquier otra cosa.
+
+## /pm-search-ticket [jira|trello] [query]
+
+Busca tickets en lenguaje natural, muestra una lista numerada y te deja elegir cuál analizar:
+
+```text
+/pm-search-ticket jira tickets del sprint actual en doing sobre autenticación
+/pm-search-ticket trello cards de la lista In Progress sobre pagos
+```
+
+Para Jira, Claude traduce el query a JQL automáticamente.
 
 ---
 
@@ -79,7 +112,7 @@ El objetivo es responder:
 Cuando le pedís algo como:
 
 ```text
-Analizame la tarjeta X
+/pm-analize PROJ-123
 ```
 
 Claude:
@@ -131,19 +164,7 @@ npm run build
 
 ## 2. Registrar el MCP en Claude Code
 
-Reemplazá:
-
-```text
-/ruta/al/repo
-```
-
-por la ruta donde clonaste el proyecto.
-
-Ejemplo:
-
-```text
-/Users/tomas/pm-mcp
-```
+Reemplazá `/ruta/al/repo` por la ruta donde clonaste el proyecto.
 
 ### Trello
 
@@ -153,6 +174,8 @@ claude mcp add trello \
   -e TRELLO_TOKEN=tu_token \
   -- node /ruta/al/repo/dist/index.js
 ```
+
+Variable opcional: `TRELLO_DEFAULT_BOARD_ID` — si la setés, `list_trello_cards` usa ese board cuando no pasás uno explícito.
 
 ### Jira
 
@@ -218,24 +241,23 @@ Sin `https://`.
 
 ---
 
-## Como usarlo: Trello
+# Cómo usarlo
 
-Podés pedirle a Claude:
+## Trello
+
+```text
+/pm-analize abc123
+```
+
+o pedirle directo a Claude:
 
 ```text
 Leé la tarjeta de Trello con ID abc123
 ```
 
-o
-
-```text
-Analizá esta tarjeta:
-https://trello.com/c/abc123/nombre-de-la-tarjeta
-```
-
 ### ¿Dónde encuentro el ID?
 
-En la URL:
+En la URL de la card:
 
 ```text
 https://trello.com/c/abc123/nombre-de-la-tarjeta
@@ -244,30 +266,25 @@ https://trello.com/c/abc123/nombre-de-la-tarjeta
 
 ---
 
-## Como usarlo: Jira
+## Jira
 
-Podés pedirle:
+```text
+/pm-analize PROJ-123
+```
+
+o pedirle directo:
 
 ```text
 Leé el issue PROJ-123
 ```
 
-o
-
-```text
-Analizá este issue:
-https://miempresa.atlassian.net/browse/PROJ-123
-```
-
 ### ¿Dónde encuentro la clave?
-
-La clave del issue:
 
 ```text
 PROJ-123
 ```
 
-que aparece en Jira junto al título.
+aparece en Jira junto al título del issue.
 
 ---
 
@@ -293,19 +310,6 @@ Contiene una vista resumida del proyecto:
 * arquitectura general
 * patrones importantes
 
-Ejemplo:
-
-```text
-Tech stack:
-- Next.js
-- React
-- Node.js
-
-Convenciones:
-- Servicios en services/
-- Componentes en components/
-```
-
 Su objetivo es evitar que Claude tenga que redescubrir el proyecto desde cero cada vez.
 
 ---
@@ -321,23 +325,8 @@ Por ejemplo:
 * uploads de archivos
 * integraciones externas
 * componentes reutilizables
-* servicios de referencia
 
-Ejemplo:
-
-```md
-# Upload Pattern
-
-Referencia:
-components/shared/upload
-
-Uso:
-Cualquier funcionalidad de carga de archivos.
-```
-
-Con el tiempo, Claude empieza a construir una especie de mapa mental del proyecto.
-
-En lugar de volver a explorar el mismo código una y otra vez, puede reutilizar conocimiento ya descubierto y enfocarse únicamente en el ticket actual.
+Con el tiempo, Claude construye una especie de mapa mental del proyecto y deja de explorar código que ya conoce.
 
 ---
 
@@ -345,35 +334,24 @@ En lugar de volver a explorar el mismo código una y otra vez, puede reutilizar 
 
 ## ¿Mis credenciales son seguras?
 
-Sí.
-
-Las credenciales se pasan como variables de entorno al registrar el MCP y no quedan hardcodeadas en el repositorio.
-
----
+Sí. Se pasan como variables de entorno al registrar el MCP y no quedan hardcodeadas en el repositorio.
 
 ## ¿Necesito copiar el contenido del ticket?
 
-No.
-
-Claude puede leerlo directamente usando las herramientas MCP.
-
----
+No. Claude puede leerlo directamente usando las herramientas MCP.
 
 ## ¿Claude analiza imágenes?
 
-Sí.
+Sí. Si la tarjeta tiene wireframes, mockups, screenshots o diagramas adjuntos, Claude puede analizarlos junto con el resto del ticket.
 
-Si la tarjeta tiene wireframes, mockups, screenshots o diagramas adjuntos, Claude puede analizarlos junto con el resto del ticket.
+## ¿Puedo dejar que Claude comente en el ticket?
 
----
+Sí. Después de analizar, Claude puede dejar un comentario resumido con los puntos clave del análisis directamente en Jira o Trello.
 
 ## ¿Cómo elimino el MCP?
 
 ```bash
 claude mcp remove trello
-```
-
-```bash
 claude mcp remove jira
 ```
 

@@ -2,7 +2,6 @@ export interface TrelloCard {
   name: string;
   desc: string;
   due?: string | null;
-  shortUrl?: string;
   labels?: { id: string; name: string; color: string }[];
   members?: { id: string; fullName: string }[];
   checklists?: {
@@ -55,7 +54,6 @@ export interface TrelloChecklistResult {
 export interface TrelloCardResult {
   name: string;
   description: string;
-  shortUrl: string;
   list: string | null;
   labels: string[];
   due: string | null;
@@ -139,15 +137,21 @@ export async function downloadImage(url: string): Promise<string | null> {
   }
 }
 
-export async function getTrelloCard(cardId: string, includeImages = true): Promise<TrelloCardData> {
+export async function getTrelloCard(
+  cardId: string,
+  includeImages = true,
+  maxComments?: number
+): Promise<TrelloCardData> {
   const { apiKey, token } = getCredentials();
-  const url = `https://api.trello.com/1/cards/${cardId}?fields=name,desc,due,shortUrl,labels&members=true&member_fields=fullName&checklists=all&list=true&list_fields=name&actions=commentCard&actions_limit=1000&attachments=true&attachment_fields=name,url,mimeType,isUpload,bytes&key=${apiKey}&token=${token}`;
+  const url = `https://api.trello.com/1/cards/${cardId}?fields=name,desc,due,labels&members=true&member_fields=fullName&checklists=all&list=true&list_fields=name&actions=commentCard&actions_limit=1000&attachments=true&attachment_fields=name,url,mimeType,isUpload,bytes&key=${apiKey}&token=${token}`;
 
   console.error(`[trello] GET card ${cardId}`);
   const card = await fetchTrello<TrelloCard>(url);
 
   const rawActions = card.actions ?? [];
-  const comments: TrelloComment[] = rawActions.map((action) => ({
+  const limitedActions =
+    maxComments !== undefined ? rawActions.slice(0, maxComments) : rawActions;
+  const comments: TrelloComment[] = limitedActions.map((action) => ({
     author: action.memberCreator.fullName,
     date: action.date,
     text: action.data.text,
@@ -178,18 +182,24 @@ export async function getTrelloCard(cardId: string, includeImages = true): Promi
     card: {
       name: card.name,
       description: card.desc,
-      shortUrl: card.shortUrl ?? "",
       list: card.list?.name ?? null,
-      labels: (card.labels ?? []).map((l) => l.name).filter(Boolean),
+      labels: (card.labels ?? []).map((l) => {
+        if (l.color && l.name) return `${l.color}: ${l.name}`;
+        return l.name || l.color || "";
+      }).filter(Boolean),
       due: card.due ?? null,
       members: (card.members ?? []).map((m) => m.fullName),
       comments,
       checklists: (card.checklists ?? []).map((cl) => ({
         name: cl.name,
-        items: cl.checkItems.map((item) => ({
-          text: item.name,
-          done: item.state === "complete",
-        })),
+        items: [
+          ...cl.checkItems
+            .filter((i) => i.state === "incomplete")
+            .map((i) => ({ text: i.name, done: false })),
+          ...cl.checkItems
+            .filter((i) => i.state === "complete")
+            .map((i) => ({ text: i.name, done: true })),
+        ],
       })),
       attachments: nonImageAttachments.map((a) => ({
         name: a.name,
@@ -199,4 +209,111 @@ export async function getTrelloCard(cardId: string, includeImages = true): Promi
     },
     images,
   };
+}
+
+export interface TrelloCardSummary {
+  id: string;
+  name: string;
+  list: string | null;
+  labels: string[];
+  due: string | null;
+}
+
+export async function listTrelloCards(options: {
+  boardId?: string;
+  listName?: string;
+  query?: string;
+}): Promise<TrelloCardSummary[]> {
+  const { apiKey, token } = getCredentials();
+  const { boardId, listName, query } = options;
+
+  const effectiveBoardId = boardId ?? process.env.TRELLO_DEFAULT_BOARD_ID;
+
+  if (!effectiveBoardId && !query) {
+    throw new Error("board_id or query is required");
+  }
+
+  interface RawCardSummary {
+    id: string;
+    name: string;
+    idList: string;
+    labels: { name: string; color: string }[];
+    due: string | null;
+  }
+
+  function mapLabel(l: { name: string; color: string }): string {
+    if (l.color && l.name) return `${l.color}: ${l.name}`;
+    return l.name || l.color || "";
+  }
+
+  if (effectiveBoardId) {
+    interface RawList { id: string; name: string }
+
+    const [cards, lists] = await Promise.all([
+      fetchTrello<RawCardSummary[]>(
+        `https://api.trello.com/1/boards/${effectiveBoardId}/cards/open?fields=name,idList,labels,due&key=${apiKey}&token=${token}`
+      ),
+      fetchTrello<RawList[]>(
+        `https://api.trello.com/1/boards/${effectiveBoardId}/lists/open?fields=name&key=${apiKey}&token=${token}`
+      ),
+    ]);
+
+    const listMap = new Map(lists.map((l) => [l.id, l.name]));
+
+    let result: TrelloCardSummary[] = cards.map((c) => ({
+      id: c.id,
+      name: c.name,
+      list: listMap.get(c.idList) ?? null,
+      labels: c.labels.map(mapLabel).filter(Boolean),
+      due: c.due,
+    }));
+
+    if (listName) {
+      const lower = listName.toLowerCase();
+      result = result.filter((c) => c.list?.toLowerCase().includes(lower));
+    }
+
+    if (query) {
+      const lower = query.toLowerCase();
+      result = result.filter((c) => c.name.toLowerCase().includes(lower));
+    }
+
+    return result;
+  }
+
+  // Search API fallback — no boardId
+  interface TrelloSearchResponse {
+    cards: (RawCardSummary & { idBoard: string })[];
+  }
+
+  const data = await fetchTrello<TrelloSearchResponse>(
+    `https://api.trello.com/1/search?query=${encodeURIComponent(query!)}&modelTypes=cards&card_fields=name,idList,labels,due&key=${apiKey}&token=${token}`
+  );
+
+  return data.cards.map((c) => ({
+    id: c.id,
+    name: c.name,
+    list: null,
+    labels: c.labels.map(mapLabel).filter(Boolean),
+    due: c.due,
+  }));
+}
+
+export async function addTrelloComment(
+  cardId: string,
+  text: string
+): Promise<void> {
+  const { apiKey, token } = getCredentials();
+
+  const params = new URLSearchParams({ text, key: apiKey, token });
+  const response = await fetch(
+    `https://api.trello.com/1/cards/${cardId}/actions/comments?${params.toString()}`,
+    { method: "POST" }
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `Trello comment failed: HTTP ${response.status} ${response.statusText}`
+    );
+  }
 }
