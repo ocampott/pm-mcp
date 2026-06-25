@@ -10,6 +10,8 @@ import {
   TrelloComment,
   listTrelloCards,
   addTrelloComment,
+  isTextAttachment,
+  downloadTextAttachment,
 } from "./trello.js";
 
 function makeResponse(status: number, body: unknown): Response {
@@ -20,6 +22,16 @@ function makeResponse(status: number, body: unknown): Response {
     json: async () => body,
     headers: new Headers(),
     arrayBuffer: async () => new ArrayBuffer(0),
+  } as unknown as Response;
+}
+
+function makeTextResponse(status: number, body: string): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    statusText: status === 200 ? "OK" : "Error",
+    text: async () => body,
+    headers: new Headers(),
   } as unknown as Response;
 }
 
@@ -330,5 +342,89 @@ describe("addTrelloComment", () => {
   it("throws on API error", async () => {
     mockFetch.mockResolvedValueOnce(makeResponse(403, {}));
     await expect(addTrelloComment("card123", "Hello!")).rejects.toThrow("Trello comment failed: HTTP 403");
+  });
+});
+
+describe("isTextAttachment", () => {
+  it("detects text/html mimeType", () => {
+    expect(isTextAttachment("file.html", "text/html")).toBe(true);
+  });
+  it("detects text/* prefix", () => {
+    expect(isTextAttachment("file.txt", "text/plain")).toBe(true);
+  });
+  it("detects application/json", () => {
+    expect(isTextAttachment("data.json", "application/json")).toBe(true);
+  });
+  it("detects application/sql", () => {
+    expect(isTextAttachment("schema.sql", "application/sql")).toBe(true);
+  });
+  it("detects application/xml", () => {
+    expect(isTextAttachment("data.xml", "application/xml")).toBe(true);
+  });
+  it("falls back to .sql extension when mimeType is generic", () => {
+    expect(isTextAttachment("schema.sql", "application/octet-stream")).toBe(true);
+  });
+  it("falls back to .html extension when mimeType is empty", () => {
+    expect(isTextAttachment("page.html", "")).toBe(true);
+  });
+  it("detects .yml extension", () => {
+    expect(isTextAttachment("config.yml", "application/octet-stream")).toBe(true);
+  });
+  it("returns false for .pdf", () => {
+    expect(isTextAttachment("doc.pdf", "application/pdf")).toBe(false);
+  });
+  it("returns false for image/png", () => {
+    expect(isTextAttachment("photo.png", "image/png")).toBe(false);
+  });
+});
+
+describe("downloadTextAttachment", () => {
+  const OLD_ENV = process.env;
+
+  beforeEach(() => {
+    process.env = { ...OLD_ENV, TRELLO_API_KEY: "test-key", TRELLO_TOKEN: "test-token" };
+    mockFetch.mockReset();
+  });
+
+  afterAll(() => {
+    process.env = OLD_ENV;
+  });
+
+  it("returns text content when download succeeds", async () => {
+    mockFetch.mockResolvedValueOnce(makeTextResponse(200, "SELECT * FROM users;"));
+    const result = await downloadTextAttachment("https://trello.com/att1");
+    expect(result).not.toBeNull();
+    expect(result!.content).toBe("SELECT * FROM users;");
+    expect(result!.truncated).toBe(false);
+  });
+
+  it("truncates content exceeding 50 000 characters", async () => {
+    const longText = "a".repeat(60_000);
+    mockFetch.mockResolvedValueOnce(makeTextResponse(200, longText));
+    const result = await downloadTextAttachment("https://trello.com/att1");
+    expect(result).not.toBeNull();
+    expect(result!.truncated).toBe(true);
+    expect(result!.content).toContain("[truncado: archivo excede 50 000 caracteres]");
+    expect(result!.content.startsWith("a".repeat(50_000))).toBe(true);
+  });
+
+  it("returns null on HTTP error", async () => {
+    mockFetch.mockResolvedValueOnce(makeTextResponse(403, "Forbidden"));
+    const result = await downloadTextAttachment("https://trello.com/att1");
+    expect(result).toBeNull();
+  });
+
+  it("returns null on network error", async () => {
+    mockFetch.mockRejectedValueOnce(new Error("Network error"));
+    const result = await downloadTextAttachment("https://trello.com/att1");
+    expect(result).toBeNull();
+  });
+
+  it("uses OAuth Authorization header", async () => {
+    mockFetch.mockResolvedValueOnce(makeTextResponse(200, "content"));
+    await downloadTextAttachment("https://trello.com/att1");
+    const [, options] = mockFetch.mock.calls[0] as [string, RequestInit];
+    const headers = options.headers as Record<string, string>;
+    expect(headers["Authorization"]).toContain("OAuth");
   });
 });

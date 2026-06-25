@@ -68,6 +68,54 @@ export interface TrelloCardData {
   images: TrelloImage[];
 }
 
+const TEXT_MIME_EXACT = new Set(["application/json", "application/sql", "application/xml"]);
+const TEXT_EXTENSIONS = new Set([".html", ".htm", ".sql", ".txt", ".md", ".json", ".csv", ".xml", ".yaml", ".yml"]);
+const MAX_TEXT_BYTES = 50_000;
+
+export interface TextAttachment {
+  name: string;
+  mimeType: string;
+  content: string;
+  truncated: boolean;
+}
+
+export function isTextAttachment(name: string, mimeType: string): boolean {
+  if (mimeType.startsWith("text/")) return true;
+  if (TEXT_MIME_EXACT.has(mimeType)) return true;
+  const dot = name.lastIndexOf(".");
+  if (dot === -1) return false;
+  return TEXT_EXTENSIONS.has(name.slice(dot).toLowerCase());
+}
+
+export async function downloadTextAttachment(
+  url: string
+): Promise<{ content: string; truncated: boolean } | null> {
+  const { apiKey, token } = getCredentials();
+  console.error(`[trello] Downloading text attachment: ${url}`);
+  try {
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `OAuth oauth_consumer_key="${apiKey}", oauth_token="${token}"`,
+      },
+    });
+    if (!response.ok) {
+      console.error(`[trello] Text download failed: HTTP ${response.status} for ${url}`);
+      return null;
+    }
+    const text = await response.text();
+    if (text.length > MAX_TEXT_BYTES) {
+      return {
+        content: text.slice(0, MAX_TEXT_BYTES) + "\n[truncado: archivo excede 50 000 caracteres]",
+        truncated: true,
+      };
+    }
+    return { content: text, truncated: false };
+  } catch (err) {
+    console.error(`[trello] Text download error for ${url}:`, err);
+    return null;
+  }
+}
+
 function getCredentials(): { apiKey: string; token: string } {
   const apiKey = process.env.TRELLO_API_KEY;
   const token = process.env.TRELLO_TOKEN;
