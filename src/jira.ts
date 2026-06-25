@@ -34,6 +34,7 @@ export interface JiraIssueResult {
 export interface JiraIssueData {
   issue: JiraIssueResult;
   images: JiraImage[];
+  textAttachments: TextAttachment[];
 }
 
 const TEXT_MIME_EXACT = new Set(["application/json", "application/sql", "application/xml"]);
@@ -331,7 +332,8 @@ async function fetchAllComments(
 export async function getJiraIssue(
   issueKey: string,
   includeImages = true,
-  maxComments?: number
+  maxComments?: number,
+  includeTextAttachments = false
 ): Promise<JiraIssueData> {
   const { host, authHeader } = getCredentials();
   const baseUrl = `https://${host}`;
@@ -390,6 +392,21 @@ export async function getJiraIssue(
     images = downloadedImages.filter((img): img is JiraImage => img !== null);
   }
 
+  let textAttachments: TextAttachment[] = [];
+  if (includeTextAttachments) {
+    const textCandidates = nonImageAttachments.filter((a) =>
+      isTextAttachment(a.filename, a.mimeType ?? "")
+    );
+    const downloaded = await Promise.all(
+      textCandidates.map(async (a): Promise<TextAttachment | null> => {
+        const result = await downloadJiraText(a.content, authHeader);
+        if (!result) return null;
+        return { name: a.filename, mimeType: a.mimeType, content: result.content, truncated: result.truncated };
+      })
+    );
+    textAttachments = downloaded.filter((t): t is TextAttachment => t !== null);
+  }
+
   const issue: JiraIssueResult = {
     key: raw.key,
     summary: f.summary,
@@ -418,7 +435,7 @@ export async function getJiraIssue(
     epic: epicField ? extractEpic(f[epicField]) : null,
   };
 
-  return { issue, images };
+  return { issue, images, textAttachments };
 }
 
 export interface JiraSearchResult {

@@ -420,6 +420,69 @@ describe("getJiraIssue", () => {
     expect(issue.comments[0].text).toBe("Comment 3");
     expect(issue.comments[1].text).toBe("Comment 4");
   });
+
+  it("returns empty textAttachments when includeTextAttachments is false (default)", async () => {
+    const raw: MockJiraRaw = {
+      key: "PROJ-50",
+      fields: {
+        summary: "Task",
+        description: null,
+        comment: { comments: [], total: 0, maxResults: 50 },
+        attachment: [
+          { id: "att1", filename: "schema.sql", mimeType: "application/sql", content: "https://jira.example.com/att1" },
+        ],
+      },
+    };
+    mockFetch.mockResolvedValueOnce(makeResponse(200, raw));
+
+    const { textAttachments } = await getJiraIssue("PROJ-50", false);
+    expect(textAttachments).toEqual([]);
+    expect(mockFetch).toHaveBeenCalledTimes(2); // fields + issue, no text download
+  });
+
+  it("downloads and returns text attachments when includeTextAttachments is true", async () => {
+    const raw: MockJiraRaw = {
+      key: "PROJ-51",
+      fields: {
+        summary: "Task",
+        description: null,
+        comment: { comments: [], total: 0, maxResults: 50 },
+        attachment: [
+          { id: "att1", filename: "schema.sql", mimeType: "application/sql", content: "https://jira.example.com/att1" },
+        ],
+      },
+    };
+    mockFetch
+      .mockResolvedValueOnce(makeResponse(200, raw))
+      .mockResolvedValueOnce(makeTextResponse(200, "CREATE TABLE x (id INT);"));
+
+    const { textAttachments } = await getJiraIssue("PROJ-51", false, undefined, true);
+    expect(textAttachments).toHaveLength(1);
+    expect(textAttachments[0].name).toBe("schema.sql");
+    expect(textAttachments[0].mimeType).toBe("application/sql");
+    expect(textAttachments[0].content).toBe("CREATE TABLE x (id INT);");
+    expect(textAttachments[0].truncated).toBe(false);
+    expect(mockFetch).toHaveBeenCalledTimes(3); // fields + issue + text download
+  });
+
+  it("text attachments still appear in issue.attachments regardless of includeTextAttachments", async () => {
+    const raw: MockJiraRaw = {
+      key: "PROJ-52",
+      fields: {
+        summary: "Task",
+        description: null,
+        comment: { comments: [], total: 0, maxResults: 50 },
+        attachment: [
+          { id: "att1", filename: "schema.sql", mimeType: "application/sql", content: "https://jira.example.com/att1" },
+        ],
+      },
+    };
+    mockFetch.mockResolvedValueOnce(makeResponse(200, raw));
+
+    const { issue } = await getJiraIssue("PROJ-52", false);
+    expect(issue.attachments).toHaveLength(1);
+    expect(issue.attachments[0].name).toBe("schema.sql");
+  });
 });
 
 describe("searchJiraIssues", () => {
