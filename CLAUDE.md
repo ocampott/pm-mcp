@@ -12,12 +12,15 @@ Para que Claude analice los resultados automáticamente con Opus, copiá la secc
 
 Cuando uses `get_trello_card` o `get_jira_issue`, seguí estos pasos:
 
-### Paso 1 — Imágenes
-Preguntale al usuario: "¿Querés que analice las imágenes adjuntas? Omitirlas ahorra tokens si no son necesarias."
-Usá `include_images: true/false` según la respuesta.
+### Paso 1 — Imágenes y adjuntos de texto
+Preguntale al usuario con una sola llamada a `AskUserQuestion` (dos preguntas):
+1. "¿Querés que analice las imágenes adjuntas? Omitirlas ahorra tokens si no son necesarias."
+2. "¿Querés que lea el contenido de archivos de texto adjuntos (.html, .sql, .txt, .json, etc.)? Puede agregar bastantes tokens según el tamaño de los archivos."
+
+Usá `include_images: true/false` e `include_text_attachments: true/false` según las respuestas.
 
 ### Paso 2 — Llamá al tool
-Con el `include_images` adecuado.
+Con los parámetros `include_images` e `include_text_attachments` adecuados.
 
 ### Paso 3 — Contexto del proyecto
 Intentá leer `.claude/project-context.md`:
