@@ -37,7 +37,6 @@ Once installed, use these skills inside Claude Code:
 
 /ticket-analyzer:setup                  # Configure credentials (first-time wizard)
 /ticket-analyzer:status                 # Check which accounts are connected
-/ticket-analyzer:update                 # Update to the latest version
 ```
 
 ---
