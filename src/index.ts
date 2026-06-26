@@ -6,8 +6,8 @@ import {
   McpError,
   ErrorCode,
 } from "@modelcontextprotocol/sdk/types.js";
-import { getTrelloCard, TrelloCardResult, listTrelloCards, addTrelloComment, TextAttachment } from "./trello.js";
-import { getJiraIssue, JiraIssueResult, searchJiraIssues, addJiraComment } from "./jira.js";
+import { getTrelloCard, TrelloCardResult, listTrelloCards, addTrelloComment, getTrelloStatus, TextAttachment } from "./trello.js";
+import { getJiraIssue, JiraIssueResult, searchJiraIssues, addJiraComment, getJiraStatus } from "./jira.js";
 import { getJiraCustomFields } from "./fields.js";
 
 function formatDate(iso: string): string {
@@ -302,6 +302,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ["card_id", "text"],
         },
       },
+      {
+        name: "get_status",
+        description: "Check which integrations are configured and connected. Returns account info for Trello and/or Jira.",
+        inputSchema: {
+          type: "object",
+          properties: {},
+        },
+      },
     ],
   };
 });
@@ -491,6 +499,42 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       console.error(`[pm-mcp] Error: ${message}`);
       return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
     }
+  }
+
+  if (name === "get_status") {
+    console.error("[pm-mcp] Tool called: get_status");
+
+    const [trello, jira] = await Promise.all([getTrelloStatus(), getJiraStatus()]);
+
+    const lines: string[] = ["## ticket-analyzer status\n"];
+
+    const trelloIcon = trello.connected ? "✓" : trello.configured ? "✗" : "—";
+    lines.push(`**Trello** ${trelloIcon}`);
+    if (trello.connected) {
+      lines.push(`  Usuario: ${trello.fullName} (@${trello.username})`);
+      if (trello.email) lines.push(`  Email: ${trello.email}`);
+    } else if (trello.configured) {
+      lines.push(`  Error: ${trello.error}`);
+    } else {
+      lines.push("  No configurado — ejecutá /ticket-analyzer:setup");
+    }
+
+    lines.push("");
+
+    const jiraIcon = jira.connected ? "✓" : jira.configured ? "✗" : "—";
+    lines.push(`**Jira** ${jiraIcon}`);
+    if (jira.connected) {
+      lines.push(`  Host: ${jira.host}`);
+      lines.push(`  Usuario: ${jira.displayName}`);
+      if (jira.email) lines.push(`  Email: ${jira.email}`);
+    } else if (jira.configured) {
+      lines.push(`  Host: ${jira.host}`);
+      lines.push(`  Error: ${jira.error}`);
+    } else {
+      lines.push("  No configurado — ejecutá /ticket-analyzer:setup");
+    }
+
+    return { content: [{ type: "text", text: lines.join("\n") }] };
   }
 
   throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);

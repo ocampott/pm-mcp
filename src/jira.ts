@@ -117,7 +117,7 @@ function getCredentials(): { host: string; authHeader: string } {
 
   if (!host || !email || !token) {
     throw new Error(
-      "Missing Jira credentials: JIRA_HOST, JIRA_EMAIL, and JIRA_API_TOKEN environment variables are required."
+      "Jira credentials not configured. Run /ticket-analyzer:setup to set up your host, email, and API token."
     );
   }
 
@@ -492,6 +492,52 @@ export async function searchJiraIssues(
       priority: i.fields.priority?.name ?? null,
     })),
   };
+}
+
+export interface JiraStatusResult {
+  configured: boolean;
+  connected: boolean;
+  accountId?: string;
+  displayName?: string;
+  email?: string;
+  host?: string;
+  error?: string;
+}
+
+export async function getJiraStatus(): Promise<JiraStatusResult> {
+  const host = process.env.JIRA_HOST;
+  const email = process.env.JIRA_EMAIL;
+  const token = process.env.JIRA_API_TOKEN;
+
+  if (!host || !email || !token) {
+    return { configured: false, connected: false };
+  }
+
+  const cleanHost = host.replace(/^https?:\/\//, "").replace(/\/$/, "");
+  const authHeader = `Basic ${Buffer.from(`${email}:${token}`).toString("base64")}`;
+
+  try {
+    const response = await fetch(`https://${cleanHost}/rest/api/3/myself`, {
+      headers: { Authorization: authHeader, Accept: "application/json" },
+    });
+
+    if (!response.ok) {
+      const msg = response.status === 401 ? "credenciales inválidas" : `HTTP ${response.status}`;
+      return { configured: true, connected: false, host: cleanHost, error: msg };
+    }
+
+    const data = await response.json() as { accountId: string; displayName: string; emailAddress: string };
+    return {
+      configured: true,
+      connected: true,
+      host: cleanHost,
+      accountId: data.accountId,
+      displayName: data.displayName,
+      email: data.emailAddress,
+    };
+  } catch (err) {
+    return { configured: true, connected: false, host: cleanHost, error: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 export async function addJiraComment(

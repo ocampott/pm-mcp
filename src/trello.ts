@@ -131,7 +131,7 @@ function getCredentials(): { apiKey: string; token: string } {
 
   if (!apiKey || !token) {
     throw new Error(
-      "Missing Trello credentials: TRELLO_API_KEY and TRELLO_TOKEN environment variables are required."
+      "Trello credentials not configured. Run /ticket-analyzer:setup to set up your API key and token."
     );
   }
 
@@ -371,6 +371,39 @@ export async function listTrelloCards(options: {
     labels: c.labels.map(mapLabel).filter(Boolean),
     due: c.due,
   }));
+}
+
+export interface TrelloStatusResult {
+  configured: boolean;
+  connected: boolean;
+  username?: string;
+  fullName?: string;
+  email?: string;
+  error?: string;
+}
+
+export async function getTrelloStatus(): Promise<TrelloStatusResult> {
+  const apiKey = process.env.TRELLO_API_KEY;
+  const token = process.env.TRELLO_TOKEN;
+
+  if (!apiKey || !token) {
+    return { configured: false, connected: false };
+  }
+
+  try {
+    const params = new URLSearchParams({ key: apiKey, token, fields: "fullName,email,username" });
+    const response = await fetch(`https://api.trello.com/1/members/me?${params.toString()}`);
+
+    if (!response.ok) {
+      const msg = response.status === 401 ? "credenciales inválidas" : `HTTP ${response.status}`;
+      return { configured: true, connected: false, error: msg };
+    }
+
+    const data = await response.json() as { username: string; fullName: string; email: string };
+    return { configured: true, connected: true, username: data.username, fullName: data.fullName, email: data.email };
+  } catch (err) {
+    return { configured: true, connected: false, error: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 export async function addTrelloComment(
