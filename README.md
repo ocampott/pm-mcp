@@ -45,13 +45,13 @@ Once installed, use these skills inside Claude Code:
 ### 1. Add the marketplace source
 
 ```bash
-claude plugin marketplace add ticket-analyzer --source github --repo ocampott/ticket-analyzer-mcp
+claude plugin marketplace add ocampott/ticket-analyzer-mcp
 ```
 
 ### 2. Install the plugin
 
 ```bash
-claude plugin install ticket-analyzer-mcp
+claude plugin install ticket-analyzer@ticket-analyzer-mcp
 ```
 
 ### 3. Run the setup wizard
